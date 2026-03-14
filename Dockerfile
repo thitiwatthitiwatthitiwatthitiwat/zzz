@@ -1,12 +1,20 @@
-FROM php:8.2-apache
+FROM ubuntu:22.04
 
-RUN docker-php-ext-install mysqli pdo pdo_mysql \
-    && docker-php-ext-enable mysqli
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y libpq-dev \
-    && docker-php-ext-install pdo pdo_pgsql pgsql
+RUN apt-get update && apt-get install -y \
+    apache2 \
+    php \
+    php-pgsql \
+    php-pdo \
+    libapache2-mod-php \
+    && apt-get clean
+
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 
 RUN a2enmod rewrite
+
+RUN rm -f /var/www/html/index.html
 
 COPY www/ /var/www/html/
 
@@ -14,3 +22,5 @@ RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
 
 EXPOSE 80
+
+CMD ["apache2ctl", "-D", "FOREGROUND"]
