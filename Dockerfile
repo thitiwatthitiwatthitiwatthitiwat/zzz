@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean
 
 RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+RUN echo "DirectoryIndex index.php index.html" >> /etc/apache2/apache2.conf
 
 RUN a2enmod rewrite
 
