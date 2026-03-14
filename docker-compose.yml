@@ -1,0 +1,15 @@
+services:
+  web:
+    build: .
+    container_name: hospital_web
+    restart: always
+    ports:
+      - "8080:80"
+    volumes:
+      - "./www:/var/www/html"
+    environment:
+      DB_HOST: aws-1-ap-southeast-1.pooler.supabase.com
+      DB_USER: postgres.tfbjaybenekxymwozwek
+      DB_PASS: mannysdatabase12
+      DB_NAME: postgres
+      DB_PORT: 5432
