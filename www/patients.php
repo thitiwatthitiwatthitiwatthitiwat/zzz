@@ -11,57 +11,79 @@ try {
     $rows = []; $cols = []; $error = $e->getMessage();
 }
 
-// --- Build chart data ---
+// --- Chart data using exact columns ---
 $genderCounts = [];
 $ageBuckets   = ['0-17'=>0,'18-34'=>0,'35-54'=>0,'55-74'=>0,'75+'=>0];
+$bmiCounts    = ['Underweight'=>0,'Normal'=>0,'Overweight'=>0,'Obese'=>0,'Unknown'=>0];
 
 foreach ($rows as $r) {
     // gender
-    foreach (['gender','sex'] as $gc) {
-        if (isset($r[$gc]) && $r[$gc]) {
-            $g = ucfirst(strtolower($r[$gc]));
-            $genderCounts[$g] = ($genderCounts[$g] ?? 0) + 1;
-            break;
-        }
+    if (!empty($r['gender'])) {
+        $g = ucfirst(strtolower($r['gender']));
+        $genderCounts[$g] = ($genderCounts[$g] ?? 0) + 1;
     }
     // age
-    foreach (['age','patient_age'] as $ac) {
-        if (isset($r[$ac]) && is_numeric($r[$ac])) {
-            $age = (int)$r[$ac];
-            if ($age < 18)      $ageBuckets['0-17']++;
-            elseif ($age < 35)  $ageBuckets['18-34']++;
-            elseif ($age < 55)  $ageBuckets['35-54']++;
-            elseif ($age < 75)  $ageBuckets['55-74']++;
-            else                $ageBuckets['75+']++;
-            break;
-        }
+    if (isset($r['age']) && is_numeric($r['age'])) {
+        $age = (int)$r['age'];
+        if ($age < 18)      $ageBuckets['0-17']++;
+        elseif ($age < 35)  $ageBuckets['18-34']++;
+        elseif ($age < 55)  $ageBuckets['35-54']++;
+        elseif ($age < 75)  $ageBuckets['55-74']++;
+        else                $ageBuckets['75+']++;
     }
-    // dob fallback
-    if (array_sum($ageBuckets) === 0) {
-        foreach (['date_of_birth','dob','birthdate'] as $dob) {
-            if (isset($r[$dob]) && $r[$dob]) {
-                $age = (int)date_diff(date_create($r[$dob]), date_create('today'))->y;
-                if ($age < 18)     $ageBuckets['0-17']++;
-                elseif ($age < 35) $ageBuckets['18-34']++;
-                elseif ($age < 55) $ageBuckets['35-54']++;
-                elseif ($age < 75) $ageBuckets['55-74']++;
-                else               $ageBuckets['75+']++;
-                break;
-            }
-        }
+    // bmi_category
+    if (!empty($r['bmi_category'])) {
+        $cat = $r['bmi_category'];
+        if (isset($bmiCounts[$cat])) $bmiCounts[$cat]++;
+        else $bmiCounts['Unknown']++;
     }
 }
+
+// Stats
+$totalPatients = count($rows);
+$avgAge        = $totalPatients ? round(array_sum(array_column($rows, 'age')) / $totalPatients, 1) : 0;
+$avgBmi        = $totalPatients ? round(array_sum(array_filter(array_column($rows, 'bmi'))) / $totalPatients, 1) : 0;
+$totalVisits   = array_sum(array_column($rows, 'total_visits'));
 
 require 'layout.php';
 ?>
 
 <style>
   :root { --accent-color: var(--purple); }
+  .main-wrap { overflow: hidden; }
+  .page-content {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 73px);
+    overflow-y: auto;
+    padding: 20px 36px !important;
+  }
+  .stats-strip  { flex-shrink: 0; }
+  .content-grid { flex-shrink: 0; }
+  .table-section { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 300px; }
+  .scroll-x { flex: 1; overflow: auto; min-height: 0; max-height: none !important; }
+
+  /* BMI badge */
+  .bmi-badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+  .bmi-underweight { background: rgba(77,159,255,0.15);  color: #4d9fff; border: 1px solid rgba(77,159,255,0.3); }
+  .bmi-normal      { background: rgba(45,212,160,0.15);  color: #2dd4a0; border: 1px solid rgba(45,212,160,0.3); }
+  .bmi-overweight  { background: rgba(245,197,66,0.15);  color: #f5c542; border: 1px solid rgba(245,197,66,0.3); }
+  .bmi-obese       { background: rgba(255,107,122,0.15); color: #ff6b7a; border: 1px solid rgba(255,107,122,0.3); }
+  .bmi-unknown     { background: rgba(90,100,128,0.15);  color: #5a6480; border: 1px solid rgba(90,100,128,0.3); }
 </style>
 
 <!-- Sidebar -->
 <aside class="sidebar">
-  <div class="sidebar-logo">
+  <div class="sidebar-logo" style="cursor:pointer" onclick="location.reload()">
     <div class="logo-mark">Hospital<em>DB</em></div>
     <div class="logo-sub">Supabase Analytics</div>
   </div>
@@ -82,12 +104,10 @@ require 'layout.php';
 <!-- Main -->
 <div class="main-wrap">
   <div class="topbar" style="--accent-color:var(--purple)">
-    <div>
-      <div class="page-title">Patient <em>Profile</em></div>
-    </div>
+    <div><div class="page-title">Patient <em>Profile</em></div></div>
     <span class="view-pill" style="color:var(--purple);border-color:rgba(167,139,250,0.25);background:rgba(167,139,250,0.06)">vw_patient_profile</span>
     <div class="topbar-right">
-      <span class="row-stat"><?= number_format(count($rows)) ?> rows</span>
+      <span class="row-stat"><?= number_format($totalPatients) ?> patients</span>
     </div>
   </div>
 
@@ -101,19 +121,19 @@ require 'layout.php';
     <div class="stats-strip">
       <div class="stat-box">
         <div class="stat-label">Total Patients</div>
-        <div class="stat-val accent"><?= number_format(count($rows)) ?></div>
+        <div class="stat-val accent"><?= number_format($totalPatients) ?></div>
       </div>
-      <?php if ($genderCounts): ?>
-      <?php foreach (array_slice($genderCounts, 0, 2, true) as $g => $c): ?>
       <div class="stat-box">
-        <div class="stat-label"><?= htmlspecialchars($g) ?></div>
-        <div class="stat-val accent"><?= number_format($c) ?></div>
+        <div class="stat-label">Avg Age</div>
+        <div class="stat-val accent"><?= $avgAge ?></div>
       </div>
-      <?php endforeach; ?>
-      <?php endif; ?>
       <div class="stat-box">
-        <div class="stat-label">Columns</div>
-        <div class="stat-val accent"><?= count($cols) ?></div>
+        <div class="stat-label">Avg BMI</div>
+        <div class="stat-val accent"><?= $avgBmi ?></div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Total Visits</div>
+        <div class="stat-val accent"><?= number_format($totalVisits) ?></div>
       </div>
     </div>
 
@@ -125,10 +145,10 @@ require 'layout.php';
         <div class="chart-wrap"><canvas id="chartGender"></canvas></div>
       </div>
       <?php endif; ?>
-      <?php if (array_sum($ageBuckets) > 0): ?>
+      <?php if (array_sum(array_diff_key($bmiCounts, ['Unknown'=>0])) > 0): ?>
       <div class="chart-card">
-        <div class="chart-card-title">Age Distribution</div>
-        <div class="chart-wrap"><canvas id="chartAge"></canvas></div>
+        <div class="chart-card-title">BMI Category</div>
+        <div class="chart-wrap"><canvas id="chartBmi"></canvas></div>
       </div>
       <?php endif; ?>
     </div>
@@ -138,20 +158,55 @@ require 'layout.php';
     <div class="table-section">
       <div class="table-topbar">
         <span class="table-topbar-title">All Records</span>
-        <input class="search-box" type="text" placeholder="Search table..." oninput="filterTable(this.value)"
-               style="border-color:var(--border2);" onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border2)'">
+        <input class="search-box" type="text" placeholder="Search table..."
+               oninput="filterTable(this.value)"
+               onfocus="this.style.borderColor='var(--purple)'"
+               onblur="this.style.borderColor='var(--border2)'">
       </div>
       <div class="scroll-x">
         <table id="main-table">
           <thead>
-            <tr><?php foreach ($cols as $i => $col): ?><th onclick="sortTable(<?= $i ?>)"><?= htmlspecialchars($col) ?></th><?php endforeach; ?></tr>
+            <tr>
+              <th onclick="sortTable(0)">ID</th>
+              <th onclick="sortTable(1)">Name</th>
+              <th onclick="sortTable(2)">Gender</th>
+              <th onclick="sortTable(3)">Date of Birth</th>
+              <th onclick="sortTable(4)">Age</th>
+              <th onclick="sortTable(5)">Blood Type</th>
+              <th onclick="sortTable(6)">Phone</th>
+              <th onclick="sortTable(7)">Height (cm)</th>
+              <th onclick="sortTable(8)">Weight (kg)</th>
+              <th onclick="sortTable(9)">BMI</th>
+              <th onclick="sortTable(10)">BMI Category</th>
+              <th onclick="sortTable(11)">Total Visits</th>
+              <th onclick="sortTable(12)">Last Visit</th>
+            </tr>
           </thead>
           <tbody>
-            <?php foreach ($rows as $row): ?>
+            <?php foreach ($rows as $row):
+              $bmiCat = $row['bmi_category'] ?? 'Unknown';
+              $bmiClass = match(strtolower($bmiCat)) {
+                'underweight' => 'bmi-underweight',
+                'normal'      => 'bmi-normal',
+                'overweight'  => 'bmi-overweight',
+                'obese'       => 'bmi-obese',
+                default       => 'bmi-unknown',
+              };
+            ?>
             <tr>
-              <?php foreach ($cols as $col): $v = $row[$col]; ?>
-              <td><?= ($v===null||$v==='') ? '<span class="null-val">—</span>' : htmlspecialchars((string)$v) ?></td>
-              <?php endforeach; ?>
+              <td><?= htmlspecialchars($row['patient_id'] ?? '—') ?></td>
+              <td style="font-weight:600"><?= htmlspecialchars($row['patient_name'] ?? '—') ?></td>
+              <td><?= htmlspecialchars($row['gender'] ?? '—') ?></td>
+              <td><?= htmlspecialchars($row['date_of_birth'] ?? '—') ?></td>
+              <td><?= htmlspecialchars($row['age'] ?? '—') ?></td>
+              <td><?= htmlspecialchars($row['blood_type'] ?? '—') ?></td>
+              <td><?= htmlspecialchars($row['phone'] ?? '—') ?></td>
+              <td><?= ($row['Height']===null||$row['Height']==='') ? '<span class="null-val">—</span>' : htmlspecialchars($row['Height']) ?></td>
+              <td><?= ($row['Weight']===null||$row['Weight']==='') ? '<span class="null-val">—</span>' : htmlspecialchars($row['Weight']) ?></td>
+              <td><?= ($row['bmi']===null||$row['bmi']==='') ? '<span class="null-val">—</span>' : htmlspecialchars($row['bmi']) ?></td>
+              <td><span class="bmi-badge <?= $bmiClass ?>"><?= htmlspecialchars($bmiCat) ?></span></td>
+              <td><?= htmlspecialchars($row['total_visits'] ?? '0') ?></td>
+              <td><?= ($row['last_visit_date']===null||$row['last_visit_date']==='') ? '<span class="null-val">—</span>' : htmlspecialchars($row['last_visit_date']) ?></td>
             </tr>
             <?php endforeach; ?>
           </tbody>
@@ -163,7 +218,7 @@ require 'layout.php';
 </div>
 
 <script>
-const monoFont = { family: 'DM Mono', size: 10 };
+const monoFont  = { family:'DM Mono', size:10 };
 const gridColor = '#1c2236';
 const tickColor = '#5a6480';
 
@@ -174,7 +229,7 @@ new Chart(document.getElementById('chartGender'), {
     labels: <?= json_encode(array_keys($genderCounts)) ?>,
     datasets: [{
       data: <?= json_encode(array_values($genderCounts)) ?>,
-      backgroundColor: ['rgba(167,139,250,0.75)','rgba(0,229,255,0.65)','rgba(45,212,160,0.65)','rgba(245,197,66,0.65)'],
+      backgroundColor: ['rgba(167,139,250,0.75)','rgba(0,229,255,0.65)','rgba(45,212,160,0.65)'],
       borderColor: '#111520', borderWidth: 2
     }]
   },
@@ -182,27 +237,24 @@ new Chart(document.getElementById('chartGender'), {
 });
 <?php endif; ?>
 
-<?php if (array_sum($ageBuckets) > 0): ?>
-new Chart(document.getElementById('chartAge'), {
-  type: 'bar',
+<?php if (array_sum(array_diff_key($bmiCounts, ['Unknown'=>0])) > 0): ?>
+new Chart(document.getElementById('chartBmi'), {
+  type: 'doughnut',
   data: {
-    labels: <?= json_encode(array_keys($ageBuckets)) ?>,
+    labels: <?= json_encode(array_keys($bmiCounts)) ?>,
     datasets: [{
-      label: 'Patients',
-      data: <?= json_encode(array_values($ageBuckets)) ?>,
-      backgroundColor: 'rgba(167,139,250,0.18)',
-      borderColor: 'rgba(167,139,250,0.75)',
-      borderWidth: 1, borderRadius: 5
+      data: <?= json_encode(array_values($bmiCounts)) ?>,
+      backgroundColor: [
+        'rgba(77,159,255,0.75)',
+        'rgba(45,212,160,0.75)',
+        'rgba(245,197,66,0.75)',
+        'rgba(255,107,122,0.75)',
+        'rgba(90,100,128,0.55)',
+      ],
+      borderColor: '#111520', borderWidth: 2
     }]
   },
-  options: {
-    responsive:true, maintainAspectRatio:false,
-    plugins:{ legend:{ labels:{ color:tickColor, font:{family:'DM Mono',size:11} } } },
-    scales:{
-      x:{ ticks:{color:tickColor,font:monoFont}, grid:{color:gridColor} },
-      y:{ ticks:{color:tickColor,font:monoFont}, grid:{color:gridColor} }
-    }
-  }
+  options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{ color:tickColor, font:{family:'DM Mono',size:11}, boxWidth:12 } } } }
 });
 <?php endif; ?>
 
